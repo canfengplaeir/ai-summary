@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI摘要管理后台</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@3.9.3/dist/full.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+    <!-- 添加 Monaco Editor -->
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.43.0/min/vs/loader.js"></script>
+</head>
+<body>
+    <div class="drawer lg:drawer-open">
+        <input id="drawer" type="checkbox" class="drawer-toggle" />
+        
+        <!-- 侧边栏 -->
+        <div class="drawer-side">
+            <label for="drawer" class="drawer-overlay"></label>
+            <ul class="menu p-4 w-80 h-full bg-base-200 text-base-content">
+                <li class="mb-4">
+                    <h2 class="text-xl font-bold">AI摘要管理后台</h2>
+                </li>
+                <li><a href="#dashboard" class="active">仪表盘</a></li>
+                <li><a href="#summaries">摘要管理</a></li>
+                <li><a href="#config">系统配置</a></li>
+                <li><a href="#themes">主题管理</a></li>
+                <li><a href="#accounts">账户管理</a></li>
+                <li class="mt-auto">
+                    <a href="/admin/logout" class="text-error">退出登录</a>
+                </li>
+            </ul>
+        </div>
+
+        <!-- 主内容区 -->
+        <div class="drawer-content">
+            <!-- 顶部导航栏 -->
+            <div class="navbar bg-base-100 lg:hidden">
+                <div class="flex-none">
+                    <label for="drawer" class="btn btn-square btn-ghost drawer-button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-5 h-5 stroke-current">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                        </svg>
+                    </label>
+                </div>
+                <div class="flex-1">
+                    <h1 class="text-xl font-bold">AI摘要管理后台</h1>
+                </div>
+            </div>
+
+            <!-- 仪表盘 -->
+            <div id="dashboard" class="p-4">
+                <h2 class="text-2xl font-bold mb-4">仪表盘</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                    <div class="stats shadow">
+                        <div class="stat">
+                            <div class="stat-title">总摘要数</div>
+                            <div class="stat-value" id="totalSummaries">...</div>
+                        </div>
+                    </div>
+                    <div class="stats shadow">
+                        <div class="stat">
+                            <div class="stat-title">今日生成</div>
+                            <div class="stat-value" id="todaySummaries">...</div>
+                        </div>
+                    </div>
+                    <div class="stats shadow">
+                        <div class="stat">
+                            <div class="stat-title">API调用次数</div>
+                            <div class="stat-value" id="apiCalls">...</div>
+                        </div>
+                    </div>
+                    <div class="stats shadow">
+                        <div class="stat">
+                            <div class="stat-title">缓存命中率</div>
+                            <div class="stat-value" id="cacheHitRate">...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <!-- 最近生成的摘要 -->
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body">
+                            <h3 class="card-title">最近生成的摘要</h3>
+                            <div class="overflow-x-auto" id="recentSummaries">
+                                <table class="table table-zebra">
+                                    <thead>
+                                        <tr>
+                                            <th>文章ID</th>
+                                            <th>更新时间</th>
+                                            <th>摘要预览</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- 动态加载内容 -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 系统状态 -->
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body">
+                            <h3 class="card-title">系统状态</h3>
+                            <div class="overflow-x-auto">
+                                <table class="table">
+                                    <tbody>
+                                        <tr>
+                                            <td>API状态</td>
+                                            <td><span class="badge badge-success">正常</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td>数据库状态</td>
+                                            <td><span class="badge badge-success">正常</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td>缓存状态</td>
+                                            <td><span class="badge badge-success">正常</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td>系统负载</td>
+                                            <td><progress class="progress progress-success w-56" value="40" max="100"></progress></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 摘要列表 -->
+            <div id="summaries" class="p-4 hidden">
+                <h2 class="text-2xl font-bold mb-4">摘要管理</h2>
+                <div class="card bg-base-100 shadow-xl">
+                    <div class="card-body">
+                        <div class="overflow-x-auto">
+                            <table class="table table-zebra w-full">
+                                <thead>
+                                    <tr>
+                                        <th>文章ID</th>
+                                        <th>最后更新时间</th>
+                                        <th>摘要</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for summary in summaries %}
+                                    <tr>
+                                        <td>{{ summary.article_id }}</td>
+                                        <td>{{ summary.last_updated.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                        <td>
+                                            <button onclick="showSummaryModal(`{{ summary.summary | replace('`', '\\`') }}`)" 
+                                                    class="link link-primary">
+                                                {{ summary.summary[:100] }}...
+                                            </button>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group">
+                                                <button class="btn btn-sm btn-info" onclick="refreshSummary('{{ summary.article_id }}')">刷新</button>
+                                                <button class="btn btn-sm btn-error" onclick="deleteSummary('{{ summary.article_id }}')">删除</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 系统配置 -->
+            <div id="config" class="p-4 hidden">
+                <h2 class="text-2xl font-bold mb-4">系统配置</h2>
+                <div class="card bg-base-100 shadow-xl">
+                    <div class="card-body">
+                        <form id="configForm" onsubmit="saveConfig(event)">
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text">API Key</span>
+                                </label>
+                                <input type="password" name="api_key" value="{{ config.DASHSCOPE_API_KEY }}" class="input input-bordered" />
+                            </div>
+                            <div class="form-control mt-4">
+                                <label class="label">
+                                    <span class="label-text">Base URL</span>
+                                </label>
+                                <input type="text" name="base_url" value="{{ config.BASE_URL }}" class="input input-bordered" />
+                            </div>
+                            <div class="form-control mt-4">
+                                <label class="label">
+                                    <span class="label-text">System Content</span>
+                                </label>
+                                <textarea name="system_content" class="textarea textarea-bordered" rows="3">{{ config.SYSTEM_CONTENT }}</textarea>
+                            </div>
+                            <div class="form-control mt-4">
+                                <label class="label">
+                                    <span class="label-text">CORS Origin</span>
+                                </label>
+                                <input type="text" name="cors_origin" value="{{ config.CORS_ORIGIN }}" class="input input-bordered" />
+                            </div>
+                            <div class="card-actions justify-end mt-6">
+                                <button type="submit" class="btn btn-primary">保存配置</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 主题管理 -->
+            <div id="themes" class="p-4 hidden">
+                <h2 class="text-2xl font-bold mb-4">主题管理</h2>
+                <div class="card bg-base-100 shadow-xl">
+                    <div class="card-body">
+                        <div class="flex justify-between items-center mb-4">
+                            <div class="form-control">
+                                <select class="select select-bordered" id="themeSelect">
+                                    {% for theme in themes %}
+                                    <option value="{{ theme.name }}" {% if theme.name == current_theme %}selected{% endif %}>
+                                        {{ theme.name }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <button class="btn btn-primary" onclick="showNewThemeModal()">新建主题</button>
+                        </div>
+                        <div id="monaco-editor" style="height: 500px; border: 1px solid #ccc;"></div>
+                        <div class="card-actions justify-end mt-4">
+                            <button class="btn btn-error" onclick="deleteTheme()">删除主题</button>
+                            <button class="btn btn-primary" onclick="saveTheme()">保存主题</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 账户管理 -->
+            <div id="accounts" class="p-4 hidden">
+                <h2 class="text-2xl font-bold mb-4">账户管理</h2>
+                <div class="card bg-base-100 shadow-xl">
+                    <div class="card-body">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-xl font-bold">管理员列表</h3>
+                            <button class="btn btn-primary" onclick="showNewAdminModal()">新建管理员</button>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="table table-zebra w-full">
+                                <thead>
+                                    <tr>
+                                        <th>用户名</th>
+                                        <th>邮箱</th>
+                                        <th>角色</th>
+                                        <th>创建时间</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="adminsList">
+                                    <!-- 动态加载内容 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 摘要详情弹窗 -->
+    <dialog id="summaryModal" class="modal">
+        <form method="dialog" class="modal-box">
+            <h3 class="font-bold text-lg">摘详情</h3>
+            <p id="modalSummaryContent" class="py-4 whitespace-pre-wrap"></p>
+            <div class="modal-action">
+                <button class="btn">关闭</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- 新建主题弹窗 -->
+    <dialog id="newThemeModal" class="modal">
+        <form method="dialog" class="modal-box">
+            <h3 class="font-bold text-lg">新建主题</h3>
+            <div class="form-control mt-4">
+                <label class="label">
+                    <span class="label-text">主题名称</span>
+                </label>
+                <input type="text" id="newThemeName" class="input input-bordered" required />
+            </div>
+            <div class="modal-action">
+                <button class="btn btn-ghost">取消</button>
+                <button class="btn btn-primary" onclick="createNewTheme()">创建</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- 新建管理员弹窗 -->
+    <dialog id="adminModal" class="modal">
+        <div class="modal-box">
+            <h3 class="font-bold text-lg" id="adminModalTitle">新建管理员</h3>
+            <form id="adminForm" onsubmit="handleAdminSubmit(event)" class="mt-4">
+                <input type="hidden" name="action" value="create">
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">用户名</span>
+                    </label>
+                    <input type="text" name="username" class="input input-bordered" required />
+                </div>
+                <div class="form-control mt-4">
+                    <label class="label">
+                        <span class="label-text">密码</span>
+                    </label>
+                    <input type="password" name="password" class="input input-bordered" required />
+                </div>
+                <div class="form-control mt-4">
+                    <label class="label">
+                        <span class="label-text">邮箱</span>
+                    </label>
+                    <input type="email" name="email" class="input input-bordered" required />
+                </div>
+                <div class="form-control mt-4">
+                    <label class="label">
+                        <span class="label-text">角色</span>
+                    </label>
+                    <select name="role" class="select select-bordered">
+                        <option value="admin">管理员</option>
+                        <option value="editor">编辑</option>
+                    </select>
+                </div>
+                <div class="modal-action">
+                    <button type="button" class="btn btn-ghost" onclick="closeAdminModal()">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </dialog>
+
+    <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <script src="/static/js/admin.js"></script>
+</body>
+</html>

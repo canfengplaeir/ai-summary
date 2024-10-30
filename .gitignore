@@ -1,3 +1,7 @@
 /node_modules
 /.vscode
 /__pycache__
+/.venv
+config.json
+a-post.html
+*.db
