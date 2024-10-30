@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, DateTime, Text, JSON
+from sqlalchemy import create_engine, Column, String, DateTime, Text, JSON, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -13,6 +13,7 @@ class ArticleSummary(Base):
     summary = Column(Text, nullable=False)         # 缓存的摘要
     created_at = Column(DateTime, default=datetime.utcnow)  # 摘要创建时间
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)  # 摘要更新时间
+    from_cache = Column(Boolean, default=False)  # 添加此字段标记是否来自缓存
 
 class SystemConfig(Base):
     __tablename__ = 'system_configs'

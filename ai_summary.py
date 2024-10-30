@@ -10,6 +10,11 @@ import re
 import os
 from admin import load_config  # 导入配置加载函数
 
+# 添加 Article 模型类定义
+class Article(BaseModel):
+    id: str
+    content: str
+
 app = FastAPI()
 
 # CORS设置
@@ -127,3 +132,57 @@ async def chat(request: Request, chat_request: ChatRequest):
             
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) 
+
+@app.post("/api/summary")
+async def generate_summary(article: Article):
+    """
+    生成文章摘要的API端点
+    
+    参数:
+        article (Article): 包含文章ID和内容的请求体
+            - id: 文章的唯一标识符
+            - content: 需要生成摘要的文章内容
+    
+    返回:
+        dict: 包含生成的摘要内容
+            - summary: 生成的摘要文本
+    """
+    db = SessionLocal()
+    try:
+        # 1. 检查缓存
+        cached_summary = db.query(ArticleSummary).filter(
+            ArticleSummary.article_id == article.id
+        ).first()
+        
+        if cached_summary:
+            # 如果找到缓存的摘要，标记为缓存命中并返回
+            cached_summary.from_cache = True
+            db.commit()
+            return {"summary": cached_summary.summary}
+        
+        # 2. 调用 AI API 生成摘要
+        completion = client.chat.completions.create(
+            model="qwen-plus",  # 使用通义千问模型
+            messages=[
+                # 系统提示，定义AI的角色和任务
+                {"role": "system", "content": config['SYSTEM_CONTENT']},
+                # 用户输入，即需要总结的文章内容
+                {"role": "user", "content": article.content}
+            ]
+        )
+        # 获取AI生成的摘要
+        summary = completion.choices[0].message.content
+        
+        # 3. 保存到数据库
+        db_summary = ArticleSummary(
+            article_id=article.id,          # 文章ID
+            summary=summary,                # 生成的摘要
+            last_updated=datetime.utcnow(), # 更新时间
+            from_cache=False               # 标记为非缓存（新生成）
+        )
+        db.add(db_summary)
+        db.commit()
+        
+        return {"summary": summary}
+    finally:
+        db.close()

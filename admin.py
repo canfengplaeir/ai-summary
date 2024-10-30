@@ -4,7 +4,6 @@ from fastapi.templating import Jinja2Templates
 from typing import Optional
 from datetime import datetime, timedelta
 from models import SessionLocal, ArticleSummary, SystemConfig
-from admin_config import ADMIN_USERNAME, ADMIN_PASSWORD
 from security import create_access_token, verify_token
 from math import ceil
 import os
@@ -14,6 +13,7 @@ from typing import Dict, Any
 import logging
 from fastapi.exceptions import RequestValidationError
 import json
+from fastapi import APIRouter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -39,6 +39,17 @@ async def get_current_user(request: Request, access_token: Optional[str] = Cooki
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token"
             )
+        
+        # 验证用户是否是管理员
+        config = load_config()
+        if username != config['admin']['username']:
+            if request.url.path != "/admin/login":
+                return RedirectResponse(url="/admin/login")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid user"
+            )
+            
         return username
     except:
         if request.url.path != "/admin/login":
@@ -66,7 +77,9 @@ async def login(
     username: str = Form(...),
     password: str = Form(...)
 ):
-    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+    config = load_config()
+    
+    if username == config['admin']['username'] and password == config['admin']['password']:
         access_token = create_access_token(
             data={"sub": username},
             expires_delta=timedelta(minutes=30)
@@ -80,6 +93,7 @@ async def login(
             secure=False
         )
         return response
+    
     return templates.TemplateResponse(
         "admin_login.html",
         {"request": request, "error": "Invalid username or password"},
@@ -204,25 +218,40 @@ class ConfigUpdate(BaseModel):
 @app.get("/api/config")
 async def get_config(username: str = Depends(get_current_user)):
     """获取所有配置"""
-    db = SessionLocal()
-    try:
-        configs = db.query(SystemConfig).all()
-        return {"configs": [{"key": c.key, "value": c.value, "description": c.description} for c in configs]}
-    finally:
-        db.close()
+    config = load_config()
+    return {
+        "configs": [
+            {"key": "DASHSCOPE_API_KEY", "value": config.get('DASHSCOPE_API_KEY', '')},
+            {"key": "BASE_URL", "value": config.get('BASE_URL', '')},
+            {"key": "SYSTEM_CONTENT", "value": config.get('SYSTEM_CONTENT', '')},
+            {"key": "CORS_ORIGIN", "value": config.get('CORS_ORIGIN', '')},
+            {"key": "THEME", "value": config.get('THEME', 'light')}
+        ]
+    }
 
 def load_config():
     try:
         with open('config.json', 'r', encoding='utf-8') as f:
-            return json.load(f)
+            config = json.load(f)
+            # 确保配置中包含管理员信息
+            if 'admin' not in config:
+                config['admin'] = {
+                    "username": "admin",
+                    "password": "admin"
+                }
+            return config
     except FileNotFoundError:
-        # 如果配置文件不存在，创建默认配置
+        # 如果文件不存在，创建默认配置
         default_config = {
             "DASHSCOPE_API_KEY": "",
             "BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
             "CORS_ORIGIN": "*",
             "SYSTEM_CONTENT": "你是一个博客总结助手，用于自动生成博客的读者感兴趣的文章摘要，摘要只介绍最关键内容，不超100字。",
-            "THEME": "light"
+            "THEME": "light",
+            "admin": {
+                "username": "admin",
+                "password": "admin"
+            }
         }
         save_config(default_config)
         return default_config
@@ -311,14 +340,38 @@ async def get_stats(username: str = Depends(get_current_user)):
     """获取统计信息"""
     db = SessionLocal()
     try:
+        # 总摘要数
         total_summaries = db.query(ArticleSummary).count()
+        
+        # 今日生成的摘要数
+        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_summaries = db.query(ArticleSummary).filter(
+            ArticleSummary.created_at >= today_start
+        ).count()
+        
+        # 获取最近的摘要
         recent_summaries = db.query(ArticleSummary)\
             .order_by(ArticleSummary.last_updated.desc())\
             .limit(5)\
             .all()
         
+        # 获取API调用次数和缓存命中率
+        total_requests = db.query(ArticleSummary).count()  # 总请求数
+        cache_hits = db.query(ArticleSummary).filter(
+            ArticleSummary.from_cache == True  # 需要在模型中添加此字段
+        ).count()
+        
+        # 计算缓存命中率
+        cache_hit_rate = round((cache_hits / total_requests * 100) if total_requests > 0 else 0, 2)
+        
+        # 获取API调用次数（非缓存的请求数）
+        api_calls = total_requests - cache_hits
+        
         return {
             "total_summaries": total_summaries,
+            "today_summaries": today_summaries,
+            "api_calls": api_calls,
+            "cache_hit_rate": cache_hit_rate,
             "recent_summaries": [
                 {
                     "article_id": s.article_id,
@@ -347,79 +400,67 @@ async def general_exception_handler(request, exc):
         content={"detail": "服务器内部错误，请稍后重试。"}
     )
 
-def load_admin_config():
-    try:
-        with open('admin_config.json', 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {"admins": []}
-
-def save_admin_config(config):
-    with open('admin_config.json', 'w', encoding='utf-8') as f:
-        json.dump(config, f, ensure_ascii=False, indent=4)
-
-class AdminCreate(BaseModel):
-    username: str
-    password: str
-    email: str
-    role: str = "admin"
-
-class AdminUpdate(BaseModel):
-    email: str
-    role: str
-    password: Optional[str] = None
-
-@app.get("/api/admins")
-async def get_admins(username: str = Depends(get_current_user)):
-    config = load_admin_config()
-    # 移除密码字段
-    admins = [{k: v for k, v in admin.items() if k != 'password'} 
-              for admin in config['admins']]
-    return {"admins": admins}
-
-@app.post("/api/admins")
-async def create_admin(admin: AdminCreate, username: str = Depends(get_current_user)):
-    config = load_admin_config()
-    if any(a['username'] == admin.username for a in config['admins']):
-        raise HTTPException(status_code=400, detail="Username already exists")
-    
-    new_admin = {
-        "username": admin.username,
-        "password": admin.password,  # 实际应用中应该哈希处理
-        "email": admin.email,
-        "role": admin.role,
-        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
-    config['admins'].append(new_admin)
-    save_admin_config(config)
-    return {"status": "success"}
-
-@app.put("/api/admins/{username}")
-async def update_admin(
-    username: str,
-    admin_update: AdminUpdate,
+@app.post("/api/profile/update")
+async def update_profile(
+    current_password: str = Form(...),
+    new_username: str = Form(None),
+    new_password: str = Form(None),
     current_user: str = Depends(get_current_user)
 ):
-    config = load_admin_config()
-    for admin in config['admins']:
-        if admin['username'] == username:
-            admin['email'] = admin_update.email
-            admin['role'] = admin_update.role
-            if admin_update.password:
-                admin['password'] = admin_update.password  # 实际应用中应该哈希处理
-            save_admin_config(config)
-            return {"status": "success"}
-    raise HTTPException(status_code=404, detail="Admin not found")
-
-@app.delete("/api/admins/{username}")
-async def delete_admin(
-    username: str,
-    current_user: str = Depends(get_current_user)
-):
-    if username == current_user:
-        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    config = load_config()
     
-    config = load_admin_config()
-    config['admins'] = [a for a in config['admins'] if a['username'] != username]
-    save_admin_config(config)
-    return {"status": "success"}
+    # 验证当前密码
+    if config['admin']['password'] != current_password:
+        raise HTTPException(status_code=400, detail="当前密��错误")
+    
+    # 更新信息
+    if new_username:
+        config['admin']['username'] = new_username
+    
+    if new_password:
+        config['admin']['password'] = new_password
+    
+    # 保存配置
+    save_config(config)
+    
+    # 返回需要登出的信息
+    return {"message": "账户信息更新成功", "logout": True}
+
+@app.get("/api/profile/current")
+async def get_current_user_info(current_user: str = Depends(get_current_user)):
+    config = load_config()
+    return {"username": config['admin']['username']}
+
+@app.get("/theme-editor/{theme_name}")
+async def theme_editor(
+    request: Request,
+    theme_name: str,
+    username: str = Depends(get_current_user)
+):
+    """主题编辑器页面"""
+    # 检查主题是否存在
+    theme_path = os.path.join(os.getcwd(), 'themes', f"{theme_name}.html")
+    theme_exists = os.path.exists(theme_path)
+    
+    return templates.TemplateResponse(
+        "theme_editor.html",
+        {
+            "request": request,
+            "theme_name": theme_name,
+            "theme_exists": theme_exists
+        }
+    )
+
+@app.get("/api/themes")
+async def list_themes(username: str = Depends(get_current_user)):
+    """获取所有主题列表"""
+    themes_dir = os.path.join(os.getcwd(), 'themes')
+    if not os.path.exists(themes_dir):
+        return []
+    
+    themes = [
+        {"name": f.replace('.html', '')} 
+        for f in os.listdir(themes_dir) 
+        if f.endswith('.html')
+    ]
+    return themes

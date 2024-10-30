@@ -4,18 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI摘要管理后台</title>
-    <link href="https://cdn.jsdelivr.net/npm/daisyui@3.9.3/dist/full.css" rel="stylesheet" type="text/css" />
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+    <link href="https://cdn.bootcdn.net/ajax/libs/toastify-js/1.12.0/toastify.min.css" rel="stylesheet">
     <!-- 添加 Monaco Editor -->
-    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.43.0/min/vs/loader.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/monaco-editor/0.9.0/min/vs/loader.js"></script>
+    <link rel="stylesheet" href="/static/css/output.css">
 </head>
 <body>
     <div class="drawer lg:drawer-open">
         <input id="drawer" type="checkbox" class="drawer-toggle" />
         
         <!-- 侧边栏 -->
-        <div class="drawer-side">
+        <div class="drawer-side z-40">
             <label for="drawer" class="drawer-overlay"></label>
             <ul class="menu p-4 w-80 h-full bg-base-200 text-base-content">
                 <li class="mb-4">
@@ -213,54 +212,144 @@
             <!-- 主题管理 -->
             <div id="themes" class="p-4 hidden">
                 <h2 class="text-2xl font-bold mb-4">主题管理</h2>
-                <div class="card bg-base-100 shadow-xl">
-                    <div class="card-body">
-                        <div class="flex justify-between items-center mb-4">
-                            <div class="form-control">
-                                <select class="select select-bordered" id="themeSelect">
-                                    {% for theme in themes %}
-                                    <option value="{{ theme.name }}" {% if theme.name == current_theme %}selected{% endif %}>
-                                        {{ theme.name }}
-                                    </option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <button class="btn btn-primary" onclick="showNewThemeModal()">新建主题</button>
+                
+                <!-- 添加提示信息卡片 -->
+                <div class="alert alert-info mb-4 shadow-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <div>
+                        <h3 class="font-bold">主题开发指南</h3>
+                        <div class="text-sm">
+                            <p>1. 必须使用 HTML + CSS 进行编写</p>
+                            <p>2. 必须包含 <code class="bg-base-200 px-1 rounded">&lt;div class="summary"&gt;&lt;/div&gt;</code> 作为摘要显示区域</p>
+                            <p>3. 建议使用 <a href="https://v0.dev" target="_blank" class="link link-primary">v0.dev</a> 辅助设计，可以复制 light 主题的代码作为模板</p>
                         </div>
-                        <div id="monaco-editor" style="height: 500px; border: 1px solid #ccc;"></div>
-                        <div class="card-actions justify-end mt-4">
-                            <button class="btn btn-error" onclick="deleteTheme()">删除主题</button>
-                            <button class="btn btn-primary" onclick="saveTheme()">保存主题</button>
+                    </div>
+                </div>
+
+                <!-- 现有的主题卡片网格 -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-6">
+                    {% for theme in themes %}
+                    <div class="card bg-base-100 shadow-xl min-w-[300px]">
+                        <div class="card-body">
+                            <div class="flex justify-between items-start mb-4">
+                                <h3 class="card-title">{{ theme.name }}</h3>
+                                <div class="dropdown dropdown-end">
+                                    <button tabindex="0" class="btn btn-ghost btn-sm btn-square">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="w-6 h-6 stroke-current">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path>
+                                        </svg>
+                                    </button>
+                                    <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52">
+                                        <li><a href="/admin/theme-editor/{{ theme.name }}" target="_blank">编辑</a></li>
+                                        <li><a onclick="confirmDeleteTheme('{{ theme.name }}')" class="text-error">删除</a></li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <!-- 修改预览容器 -->
+                            <div class="preview-wrapper min-h-[300px] w-full resize-y overflow-auto border border-base-300 rounded-lg">
+                                <iframe id="preview-frame-{{ theme.name }}" 
+                                        class="w-full h-full min-h-[300px] border-0"
+                                        srcdoc=""
+                                        title="{{ theme.name }} preview">
+                                </iframe>
+                            </div>
+                            <div class="card-actions justify-end mt-4">
+                                <button class="btn btn-primary" onclick="applyTheme('{{ theme.name }}')">应用</button>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    
+                    <!-- 新建主题卡片 -->
+                    <div class="card bg-base-100 shadow-xl min-w-[300px] min-h-[300px]">
+                        <div class="card-body flex items-center justify-center">
+                            <button class="btn btn-ghost btn-lg" onclick="showNewThemeModal()">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="w-8 h-8 stroke-current">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                                </svg>
+                                <span>新建主题</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 在主题管理的新建主题卡片旁边添加上传主题卡片 -->
+                    <div class="card bg-base-100 shadow-xl min-w-[300px] min-h-[300px]">
+                        <div class="card-body flex items-center justify-center">
+                            <label for="theme-upload" class="btn btn-ghost btn-lg">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="w-8 h-8 stroke-current">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                                </svg>
+                                <span>上传主题</span>
+                            </label>
+                            <input type="file" id="theme-upload" accept=".html" class="hidden" onchange="handleThemeUpload(event)">
                         </div>
                     </div>
                 </div>
             </div>
+
+            <!-- 主题编辑弹窗 -->
+            <dialog id="themeEditModal" class="modal">
+                <div class="modal-box w-11/12 max-w-5xl">
+                    <h3 class="font-bold text-lg mb-4">编辑主题</h3>
+                    <div id="monaco-editor" style="height: 500px; border: 1px solid #ccc;"></div>
+                    <div class="modal-action">
+                        <button class="btn btn-ghost" onclick="closeThemeEditor()">取消</button>
+                        <button class="btn btn-primary" onclick="saveThemeEdit()">保存</button>
+                    </div>
+                </div>
+            </dialog>
 
             <!-- 账户管理 -->
             <div id="accounts" class="p-4 hidden">
                 <h2 class="text-2xl font-bold mb-4">账户管理</h2>
                 <div class="card bg-base-100 shadow-xl">
                     <div class="card-body">
-                        <div class="flex justify-between items-center mb-4">
-                            <h3 class="text-xl font-bold">管理员列表</h3>
-                            <button class="btn btn-primary" onclick="showNewAdminModal()">新建管理员</button>
-                        </div>
-                        <div class="overflow-x-auto">
-                            <table class="table table-zebra w-full">
-                                <thead>
-                                    <tr>
-                                        <th>用户名</th>
-                                        <th>邮箱</th>
-                                        <th>角色</th>
-                                        <th>创建时间</th>
-                                        <th>操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="adminsList">
-                                    <!-- 动态加载内容 -->
-                                </tbody>
-                            </table>
-                        </div>
+                        <form id="profile-form" class="max-w-md mx-auto">
+                            <div class="form-control mb-4">
+                                <label class="label">
+                                    <span class="label-text">当前用户名</span>
+                                </label>
+                                <input type="text" id="current_username" class="input input-bordered" readonly>
+                            </div>
+                            <div class="form-control mb-4">
+                                <label class="label">
+                                    <span class="label-text">当前密码</span>
+                                    <span class="label-text-alt text-error">*必填</span>
+                                </label>
+                                <input type="password" name="current_password" class="input input-bordered" required>
+                                <label class="label">
+                                    <span class="label-text-alt text-gray-500">请输入当前密码以验证身份</span>
+                                </label>
+                            </div>
+                            <div class="form-control mb-4">
+                                <label class="label">
+                                    <span class="label-text">新用户名</span>
+                                    <span class="label-text-alt text-gray-500">可选</span>
+                                </label>
+                                <input type="text" name="new_username" class="input input-bordered">
+                                <label class="label">
+                                    <span class="label-text-alt text-gray-500">如需修改用户名请在此输入</span>
+                                </label>
+                            </div>
+                            <div class="form-control mb-4">
+                                <label class="label">
+                                    <span class="label-text">新密码</span>
+                                    <span class="label-text-alt text-gray-500">可选</span>
+                                </label>
+                                <input type="password" name="new_password" class="input input-bordered">
+                                <label class="label">
+                                    <span class="label-text-alt text-gray-500">如需修改密码请在此输入</span>
+                                </label>
+                            </div>
+                            <div class="form-control mt-6">
+                                <button type="submit" class="btn btn-primary" disabled>更新信息</button>
+                                <label class="label">
+                                    <span class="label-text-alt text-gray-500">请至少填写新用户名或新密码其中之一才能更新</span>
+                                </label>
+                            </div>
+                        </form>
                     </div>
                 </div>
             </div>
@@ -336,7 +425,7 @@
         </div>
     </dialog>
 
-    <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/toastify-js/1.12.0/toastify.js"></script>
     <script src="/static/js/admin.js"></script>
 </body>
 </html>

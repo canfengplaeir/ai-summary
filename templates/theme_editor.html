@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>主题编辑器 - AI摘要管理后台</title>
+    <link href="https://cdn.bootcdn.net/ajax/libs/toastify-js/1.12.0/toastify.min.css" rel="stylesheet">
+    <script src="https://cdn.bootcdn.net/ajax/libs/monaco-editor/0.9.0/min/vs/loader.js"></script>
+    <link rel="stylesheet" href="/static/css/output.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            background-color: hsl(var(--b2));
+        }
+        .editor-container {
+            display: flex;
+            height: calc(100vh - 30px);
+            position: relative;
+        }
+        .preview-panel {
+            width: 50%;
+            border-right: 1px solid #ddd;
+            overflow: auto;
+            transition: width 0.2s ease;
+            flex-shrink: 0;
+        }
+        .preview-panel.hidden {
+            width: 0;
+            border: none;
+        }
+        .resizer {
+            width: 8px;
+            background: #ddd;
+            cursor: col-resize;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            user-select: none;
+            flex-shrink: 0;
+        }
+        .resizer:hover {
+            background: #999;
+        }
+        .resizer-button {
+            position: absolute;
+            left: -18px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 10;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border: 1px solid #ddd;
+        }
+        .resizer-button:hover {
+            background: #f0f0f0;
+        }
+        .resizer-button svg {
+            width: 16px;
+            height: 16px;
+        }
+        .monaco-container {
+            flex: 1;
+            min-width: 300px;
+            position: relative;
+        }
+        .preview-content {
+            padding: 16px;
+            height: 100%;
+        }
+        .resize-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 9999;
+            cursor: col-resize;
+        }
+        .resize-overlay.active {
+            display: block;
+        }
+
+        /* 添加固定顶栏样式 */
+        .navbar-fixed {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 50; /* 确保在其他元素之上 */
+        }
+
+        /* 为内容添加顶部边距，防止被固定导航栏遮挡 */
+        .content-wrapper {
+            padding-top: 64px; /* 导航栏的高度 */
+        }
+    </style>
+</head>
+<body>
+    <div class="min-h-screen bg-base-200">
+        <!-- 修改顶部导航栏样式 -->
+        <div class="navbar bg-base-100 shadow-lg navbar-fixed">
+            <div class="flex-1">
+                <a href="/admin/dashboard#themes" class="btn btn-ghost">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="w-6 h-6 stroke-current">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                    </svg>
+                    返回主题列表
+                </a>
+                <h1 class="text-xl font-bold ml-4">编辑主题: {{ theme_name }}</h1>
+            </div>
+            <div class="flex-none">
+                <button class="btn btn-primary" onclick="saveTheme()">保存主题</button>
+            </div>
+        </div>
+
+        <!-- 添加 content-wrapper 类 -->
+        <div class="content-wrapper mt-4">
+            {% if not theme_exists %}
+            <!-- 主题不存在时显示的提示 -->
+            <div class="alert alert-warning shadow-lg mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                    <h3 class="font-bold">主题不存在</h3>
+                    <div class="text-sm">该主题尚未创建，您可以点击下方按钮创建它。</div>
+                </div>
+                <button class="btn btn-sm" onclick="createTheme()">创建主题</button>
+            </div>
+            {% endif %}
+
+            <!-- 编辑器说明 -->
+            <div class="alert alert-info shadow-lg mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <div>
+                    <h3 class="font-bold">主题开发指南</h3>
+                    <div class="text-sm">
+                        <p>1. 必须使用 HTML + CSS 进行编写</p>
+                        <p>2. 必须包含 <code class="bg-base-300 px-1 rounded">&lt;div class="summary"&gt;&lt;/div&gt;</code> 作为摘要显示区域</p>
+                        <p>3. 建议使用 <a href="https://v0.dev" target="_blank" class="link">v0.dev</a> 辅助设计</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 编辑器容器，添加底部边距 -->
+            <div class="card bg-base-100 shadow-xl mb-20">
+                <div class="card-body !p-0">
+                    <div class="editor-container">
+                        <div id="preview-panel" class="preview-panel">
+                            <div class="preview-content">
+                                <h3 class="text-lg font-bold mb-4">实时预览</h3>
+                                <iframe id="preview-iframe" 
+                                        class="w-full min-h-[500px] border-0 bg-base-100 rounded-lg"
+                                        srcdoc=""
+                                        title="Theme Preview">
+                                </iframe>
+                            </div>
+                        </div>
+                        <div id="resizer" class="resizer">
+                            <button id="toggle-preview" class="resizer-button">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div id="monaco-editor" class="monaco-container"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="resize-overlay" id="resize-overlay"></div>
+
+    <script src="https://cdn.bootcdn.net/ajax/libs/toastify-js/1.12.0/toastify.js"></script>
+    <script>
+        // 全局变量
+        let editor = null;
+        const themeName = "{{ theme_name }}";
+
+        // Toast 提示函数
+        function showToast(message, type = 'info') {
+            Toastify({
+                text: message,
+                duration: 3000,
+                gravity: "top",
+                position: "right",
+                className: type,
+                style: {
+                    background: type === 'success' ? '#4CAF50' : 
+                              type === 'error' ? '#f44336' : 
+                              type === 'warning' ? '#ff9800' : '#2196F3'
+                }
+            }).showToast();
+        }
+
+        // 修改主题验证函数
+        function validateThemeContent(content) {
+            // 检查是否包含必要的布局元素
+            if (!content.includes('class="summary"')) {
+                return { valid: false, error: '主题必须包含摘要显示区域 (class="summary")' };
+            }
+            return { valid: true };
+        }
+
+        // 初始化编辑器
+        function initEditor() {
+            require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.43.0/min/vs' }});
+            require(['vs/editor/editor.main'], async function() {
+                editor = monaco.editor.create(document.getElementById('monaco-editor'), {
+                    language: 'html',
+                    theme: 'vs-light',
+                    automaticLayout: true,
+                    minimap: { enabled: false },
+                    fontSize: 14,
+                    lineNumbers: 'on',
+                    scrollBeyondLastLine: false,
+                    wordWrap: 'on'
+                });
+
+                // 添加编辑器内容变化监听，使用防抖
+                editor.onDidChangeModelContent(debounce(updatePreview, 500));
+
+                if ({{ theme_exists|tojson }}) {
+                    await loadThemeContent();
+                } else {
+                    editor.setValue(getDefaultTemplate());
+                    updatePreview(); // 立即更新预览
+                }
+
+                // 初始化拖动调整大小功能
+                initResizer();
+            });
+        }
+
+        // 修改更新预览函数
+        function updatePreview() {
+            const content = editor.getValue();
+            // 验证内容
+            const validation = validateThemeContent(content);
+            if (!validation.valid) {
+                showToast(validation.error, 'warning');
+                return;
+            }
+
+            const previewFrame = document.getElementById('preview-iframe');
+            // 创建预览HTML，包装主题内容
+            const previewHtml = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    
+                    <style>
+                        body {
+                            margin: 0;
+                            padding: 16px;
+                            min-height: 100vh;
+                            background-color: transparent;
+                        }
+                    </style>
+                </head>
+                <body>
+                    ${content}
+                </body>
+                </html>
+            `;
+            previewFrame.srcdoc = previewHtml;
+        }
+
+        // 修改默认模板
+        function getDefaultTemplate() {
+            return `<div class="card bg-base-100 shadow-xl">
+    <div class="card-body">
+        <div class="summary"></div>
+    </div>
+</div>`;
+        }
+
+        // 修改初始化分隔条拖动函数
+        function initResizer() {
+            const container = document.querySelector('.editor-container');
+            const resizer = document.getElementById('resizer');
+            const previewPanel = document.getElementById('preview-panel');
+            const overlay = document.getElementById('resize-overlay');
+            const toggleBtn = document.getElementById('toggle-preview');
+            let isPreviewVisible = true;
+            let startX;
+            let startWidth;
+
+            function enableDragging(e) {
+                startX = e.pageX;
+                startWidth = previewPanel.offsetWidth;
+                overlay.classList.add('active');
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+                e.preventDefault();
+            }
+
+            function onMouseMove(e) {
+                if (!startX) return;
+                
+                const dx = e.pageX - startX;
+                const newWidth = Math.max(200, Math.min(startWidth + dx, container.offsetWidth - 300));
+                previewPanel.style.width = `${newWidth}px`;
+                
+                if (editor) {
+                    editor.layout();
+                }
+            }
+
+            function onMouseUp() {
+                startX = null;
+                overlay.classList.remove('active');
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+            }
+
+            // 切换预览面板
+            toggleBtn.addEventListener('click', () => {
+                isPreviewVisible = !isPreviewVisible;
+                previewPanel.classList.toggle('hidden');
+                toggleBtn.innerHTML = isPreviewVisible ? 
+                    '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>' :
+                    '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>';
+                
+                if (editor) {
+                    editor.layout();
+                }
+            });
+
+            // 添加拖动事件监听
+            resizer.addEventListener('mousedown', enableDragging);
+
+            // 窗口大小改变时重新布局
+            window.addEventListener('resize', () => {
+                if (editor) {
+                    editor.layout();
+                }
+            });
+        }
+
+        // 防抖函数
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        // 加载主题内容
+        async function loadThemeContent() {
+            try {
+                const response = await fetch(`/admin/api/themes/${themeName}`);
+                if (!response.ok) throw new Error('加载主题失败');
+                const data = await response.json();
+                editor.setValue(data.content);
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        // 修改保存主题函数
+        async function saveTheme() {
+            if (!editor) return;
+            
+            const content = editor.getValue();
+            // 验证内容
+            const validation = validateThemeContent(content);
+            if (!validation.valid) {
+                showToast(validation.error, 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/admin/api/themes/${themeName}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content })
+                });
+                
+                if (!response.ok) throw new Error('保存失败');
+                showToast('主题保存成功', 'success');
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        // 修改创建主题函数
+        async function createTheme() {
+            try {
+                const content = editor.getValue();
+                // 验证内容
+                const validation = validateThemeContent(content);
+                if (!validation.valid) {
+                    showToast(validation.error, 'error');
+                    return;
+                }
+
+                const response = await fetch(`/admin/api/themes/${themeName}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content })
+                });
+                
+                if (!response.ok) throw new Error('创建主题失败');
+                showToast('主题创建成功', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', initEditor);
+    </script>
+</body>
+</html> 
