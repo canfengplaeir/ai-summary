@@ -213,6 +213,7 @@ class ConfigUpdate(BaseModel):
     SYSTEM_CONTENT: str
     CORS_ORIGIN: str
     THEME: str
+    MODEL: str  # 添加模型选项
 
 # 添加配置管理路由
 @app.get("/api/config")
@@ -225,7 +226,8 @@ async def get_config(username: str = Depends(get_current_user)):
             {"key": "BASE_URL", "value": config.get('BASE_URL', '')},
             {"key": "SYSTEM_CONTENT", "value": config.get('SYSTEM_CONTENT', '')},
             {"key": "CORS_ORIGIN", "value": config.get('CORS_ORIGIN', '')},
-            {"key": "THEME", "value": config.get('THEME', 'light')}
+            {"key": "THEME", "value": config.get('THEME', 'light')},
+            {"key": "MODEL", "value": config.get('MODEL', 'qwen-plus')}  # 添加模型配置
         ]
     }
 
@@ -233,12 +235,23 @@ def load_config():
     try:
         with open('config.json', 'r', encoding='utf-8') as f:
             config = json.load(f)
-            # 确保配置中包含管理员信息
-            if 'admin' not in config:
-                config['admin'] = {
+            # 确保配置中包含所有必要的字段
+            default_config = {
+                "DASHSCOPE_API_KEY": "",
+                "BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "CORS_ORIGIN": "*",
+                "SYSTEM_CONTENT": "你是一个博客总结助手，用于自动生成博客的读者感兴趣的文章摘要，摘要只介绍最关键内容，不超100字。",
+                "THEME": "light",
+                "MODEL": "qwen-plus",
+                "admin": {
                     "username": "admin",
                     "password": "admin"
                 }
+            }
+            # 更新缺失的字段
+            for key, value in default_config.items():
+                if key not in config:
+                    config[key] = value
             return config
     except FileNotFoundError:
         # 如果文件不存在，创建默认配置
@@ -248,6 +261,7 @@ def load_config():
             "CORS_ORIGIN": "*",
             "SYSTEM_CONTENT": "你是一个博客总结助手，用于自动生成博客的读者感兴趣的文章摘要，摘要只介绍最关键内容，不超100字。",
             "THEME": "light",
+            "MODEL": "qwen-plus",
             "admin": {
                 "username": "admin",
                 "password": "admin"
@@ -269,7 +283,8 @@ async def update_config(config_update: ConfigUpdate, username: str = Depends(get
             "BASE_URL": config_update.BASE_URL,
             "SYSTEM_CONTENT": config_update.SYSTEM_CONTENT,
             "CORS_ORIGIN": config_update.CORS_ORIGIN,
-            "THEME": config_update.THEME
+            "THEME": config_update.THEME,
+            "MODEL": config_update.MODEL
         }
         save_config(config_data)
         return {"status": "success"}
@@ -411,7 +426,7 @@ async def update_profile(
     
     # 验证当前密码
     if config['admin']['password'] != current_password:
-        raise HTTPException(status_code=400, detail="当前密��错误")
+        raise HTTPException(status_code=400, detail="当前密错误")
     
     # 更新信息
     if new_username:

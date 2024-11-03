@@ -1,3 +1,87 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* 侧边栏相关样式 */
+@layer components {
+    /* 侧边栏基础样式 */
+    .drawer-side {
+        @apply z-30;  /* 确保侧边栏在适当的层级 */
+    }
+
+    /* 侧边栏收缩状态 */
+    .drawer.sidebar-collapsed .drawer-side {
+        @apply w-20;
+    }
+
+    .drawer.sidebar-collapsed .drawer-side .menu {
+        @apply w-20 px-2 py-4;
+    }
+
+    .drawer.sidebar-collapsed .drawer-side .menu .menu-title,
+    .drawer.sidebar-collapsed .drawer-side .menu span {
+        @apply hidden;
+    }
+
+    .drawer.sidebar-collapsed .drawer-side .menu a {
+        @apply justify-center;  /* 收缩时图标居中 */
+    }
+
+    .drawer.sidebar-collapsed .drawer-side .menu svg {
+        @apply m-0;  /* 移除图标的外边距 */
+    }
+
+    .drawer.sidebar-collapsed .drawer-content {
+        @apply ml-20;
+    }
+
+    /* 收缩按钮样式 */
+    .sidebar-collapse-btn {
+        @apply absolute z-20
+               w-8 h-8
+               bg-base-100 hover:bg-base-200
+               border border-base-300
+               rounded-lg
+               flex items-center justify-center
+               cursor-pointer
+               transition-all duration-300 ease-in-out
+               mb-4
+               left-1/2 -translate-x-1/2 top-2;  /* 居中定位 */
+    }
+
+    /* 标题容器 */
+    .sidebar-header {
+        @apply pt-12 text-center;  /* 增加顶部间距并文本居中 */
+    }
+
+    /* 菜单项样式 */
+    .menu-list a {
+        @apply flex items-center transition-all duration-300;
+    }
+
+    /* 确保移动端不显示收缩按钮 */
+    @media (max-width: 1024px) {
+        .sidebar-collapse-btn {
+            @apply hidden;
+        }
+        
+        .sidebar-header {
+            @apply pt-0;
+        }
+    }
+
+    /* 平滑过渡 */
+    .drawer-side,
+    .drawer-content,
+    .menu,
+    .menu-title,
+    .menu span,
+    .menu a {
+        @apply transition-all duration-300 ease-in-out;
+    }
+
+    /* 抽屉遮罩层 */
+    .drawer-overlay {
+        @apply z-20;  /* 确保遮罩层在适当的层级 */
+    }
+} 

@@ -40,7 +40,7 @@ function navigate(section) {
 function initMonacoEditor() {
     if (!document.getElementById('monaco-editor')) return;
     
-    require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.43.0/min/vs' }});
+    require.config({ paths: { 'vs': 'https://cdn.bootcdn.net/ajax/libs/monaco-editor/0.9.0/min/vs' }});
     require(['vs/editor/editor.main'], function() {
         editor = monaco.editor.create(document.getElementById('monaco-editor'), {
             value: '',
@@ -235,8 +235,7 @@ function getDefaultTemplate() {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link href="https://cdn.jsdelivr.net/npm/daisyui@3.9.4/dist/full.css" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
+
 </head>
 <body>
     <div class="card bg-base-100 shadow-xl">
@@ -290,7 +289,8 @@ async function saveConfig(event) {
         BASE_URL: formData.get('base_url'),
         SYSTEM_CONTENT: formData.get('system_content'),
         CORS_ORIGIN: formData.get('cors_origin'),
-        THEME: document.querySelector('#themeSelect')?.value || 'light'
+        THEME: document.querySelector('#themeSelect')?.value || 'light',
+        MODEL: formData.get('model')  // 添加模型配置
     };
 
     try {
@@ -412,6 +412,50 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 加载主题预览
     loadThemePreviews();
+
+    // 添加主题设置表单的事件监听
+    const themeSettingsForm = document.getElementById('themeSettingsForm');
+    if (themeSettingsForm) {
+        themeSettingsForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const cssUrls = Array.from(document.querySelectorAll('#cssInputs input'))
+                .map(input => input.value.trim())
+                .filter(url => url);
+            const jsUrls = Array.from(document.querySelectorAll('#jsInputs input'))
+                .map(input => input.value.trim())
+                .filter(url => url);
+            
+            // 保存设置到本地存储
+            localStorage.setItem(`theme_${currentThemeSettings.themeName}_css`, JSON.stringify(cssUrls));
+            localStorage.setItem(`theme_${currentThemeSettings.themeName}_js`, JSON.stringify(jsUrls));
+            
+            // 更新预览
+            updateThemePreview(currentThemeSettings.themeName);
+            
+            closeThemeSettings();
+            showToast('设置已保存', 'success');
+        });
+    }
+
+    // 添加侧边栏收缩功能
+    const sidebarBtn = document.getElementById('sidebar-collapse-btn');
+    const drawer = document.querySelector('.drawer');
+    let isCollapsed = localStorage.getItem('sidebar-collapsed') === 'true';
+    
+    function updateSidebarState() {
+        drawer.classList.toggle('sidebar-collapsed', isCollapsed);
+        localStorage.setItem('sidebar-collapsed', isCollapsed);
+    }
+    
+    // 初始化状态
+    updateSidebarState();
+    
+    // 添加点击事件
+    sidebarBtn.addEventListener('click', () => {
+        isCollapsed = !isCollapsed;
+        updateSidebarState();
+    });
 });
 
 // 在现有代码中添加或修改
@@ -478,41 +522,7 @@ async function loadThemePreviews() {
     const frames = document.querySelectorAll('[id^="preview-frame-"]');
     for (const frame of frames) {
         const themeName = frame.id.replace('preview-frame-', '');
-        try {
-            const response = await fetch(`/admin/api/themes/${themeName}`);
-            if (response.ok) {
-                const data = await response.json();
-                // 创一个完整的HTML文档，包含必要的样式
-                const previewHtml = `
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <link rel="stylesheet" href="/static/css/output.css">
-                        <style>
-                            body {
-                                margin: 0;
-                                padding: 16px;
-                                min-height: 100vh;
-                                background-color: transparent;
-                            }
-                            .preview-content {
-                                width: 100%;
-                                height: 100%;
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="preview-content">
-                            ${data.content}
-                        </div>
-                    </body>
-                    </html>
-                `;
-                frame.srcdoc = previewHtml;
-            }
-        } catch (error) {
-            console.error(`Error loading preview for ${themeName}:`, error);
-        }
+        await updateThemePreview(themeName);
     }
 }
 
@@ -631,18 +641,178 @@ async function applyTheme(themeName) {
     }
 }
 
-// 添加主题验证函数
-function validateThemeContent(content) {
-    // 检查是否是HTML
-    if (!content.trim().toLowerCase().includes('<!doctype html') && 
-        !content.trim().toLowerCase().startsWith('<html')) {
-        return { valid: false, error: '主题文件必须是完整的HTML文档' };
-    }
+// 修改预览加载函数
+async function updateThemePreview(themeName) {
+    const frame = document.getElementById(`preview-frame-${themeName}`);
+    if (!frame) return;
 
-    // 检查是否包含必要的布局元素
+    try {
+        const response = await fetch(`/admin/api/themes/${themeName}`);
+        if (response.ok) {
+            const data = await response.json();
+            const css = JSON.parse(localStorage.getItem(`theme_${themeName}_css`) || '[]');
+            const js = JSON.parse(localStorage.getItem(`theme_${themeName}_js`) || '[]');
+            
+            const previewHtml = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    ${css.map(url => `<link href="${url}" rel="stylesheet">`).join('\n')}
+                    <style>
+                        body { 
+                            margin: 0; 
+                            padding: 16px;
+                            background-color: transparent;
+                        }
+                    </style>
+                </head>
+                <body>
+                    ${data.content}
+                    ${js.map(url => `<script src="${url}"><\/script>`).join('\n')}
+                </body>
+                </html>
+            `;
+            frame.srcdoc = previewHtml;
+        }
+    } catch (error) {
+        console.error(`Error loading preview for ${themeName}:`, error);
+    }
+}
+
+// 修改主题验证函数
+function validateThemeContent(content) {
+    // 只检查必要的布局元素
     if (!content.includes('class="summary"')) {
         return { valid: false, error: '主题必须包含摘要显示区域 (class="summary")' };
     }
-
     return { valid: true };
 }
+
+// 主题设置相关函数
+let currentThemeSettings = {};
+
+function addCssInput() {
+    const container = document.getElementById('cssInputs');
+    const inputGroup = document.createElement('div');
+    inputGroup.className = 'input-group mt-2';
+    inputGroup.innerHTML = `
+        <input type="text" class="input input-bordered flex-1" placeholder="https://cdn.example.com/style.css">
+        <button type="button" class="btn btn-square btn-error" onclick="this.parentElement.remove()">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+            </svg>
+        </button>
+    `;
+    container.appendChild(inputGroup);
+}
+
+function addJsInput() {
+    const container = document.getElementById('jsInputs');
+    const inputGroup = document.createElement('div');
+    inputGroup.className = 'input-group mt-2';
+    inputGroup.innerHTML = `
+        <input type="text" class="input input-bordered flex-1" placeholder="https://cdn.example.com/script.js">
+        <button type="button" class="btn btn-square btn-error" onclick="this.parentElement.remove()">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+            </svg>
+        </button>
+    `;
+    container.appendChild(inputGroup);
+}
+
+function showThemeSettings(themeName) {
+    currentThemeSettings = {
+        themeName: themeName,
+        css: JSON.parse(localStorage.getItem(`theme_${themeName}_css`) || '[]'),
+        js: JSON.parse(localStorage.getItem(`theme_${themeName}_js`) || '[]')
+    };
+    
+    // 清空并重新添加输入框
+    document.getElementById('cssInputs').innerHTML = '';
+    document.getElementById('jsInputs').innerHTML = '';
+    
+    currentThemeSettings.css.forEach(url => addCssInput(url));
+    currentThemeSettings.js.forEach(url => addJsInput(url));
+    
+    document.getElementById('themeSettingsModal').showModal();
+}
+
+// 修改主题设置表单提交处理
+document.getElementById('themeSettingsForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const cssUrls = Array.from(document.querySelectorAll('#cssInputs input'))
+        .map(input => input.value.trim())
+        .filter(url => url);
+    const jsUrls = Array.from(document.querySelectorAll('#jsInputs input'))
+        .map(input => input.value.trim())
+        .filter(url => url);
+    
+    // 保存设置到本地存储
+    localStorage.setItem(`theme_${currentThemeSettings.themeName}_css`, JSON.stringify(cssUrls));
+    localStorage.setItem(`theme_${currentThemeSettings.themeName}_js`, JSON.stringify(jsUrls));
+    
+    // 更新预览
+    updateThemePreview(currentThemeSettings.themeName);
+    
+    // 触发设置更新事件
+    const event = new CustomEvent('themeSettingsUpdated', {
+        detail: {
+            themeName: currentThemeSettings.themeName,
+            css: cssUrls,
+            js: jsUrls
+        }
+    });
+    document.dispatchEvent(event);
+    
+    closeThemeSettings();
+    showToast('设置已保存', 'success');
+});
+
+// 侧边栏收缩功能
+document.addEventListener('DOMContentLoaded', function() {
+    const sidebarBtn = document.getElementById('sidebar-collapse-btn');
+    const drawer = document.querySelector('.drawer');
+    const sidebarIcon = document.querySelector('.sidebar-icon');
+    let isCollapsed = localStorage.getItem('sidebar-collapsed') === 'true';
+    
+    function updateSidebarState() {
+        drawer.classList.toggle('sidebar-collapsed', isCollapsed);
+        sidebarIcon.style.transform = isCollapsed ? 'rotate(180deg)' : '';
+        localStorage.setItem('sidebar-collapsed', isCollapsed);
+    }
+    
+    // 初始化状态
+    updateSidebarState();
+    
+    sidebarBtn.addEventListener('click', () => {
+        isCollapsed = !isCollapsed;
+        updateSidebarState();
+    });
+});
+
+// 添加关闭主题设置对话框的函数
+function closeThemeSettings() {
+    document.getElementById('themeSettingsModal').close();
+}
+
+// 添加主题设置更新事件监听
+document.addEventListener('themeSettingsUpdated', function(event) {
+    const { themeName, css, js } = event.detail;
+    // 更新对应主题的预览
+    updateThemePreview(themeName);
+
+    // 如果编辑器页面打开，通知它更新设置
+    const editorWindow = window.open('', `theme_editor_${themeName}`);
+    if (editorWindow) {
+        editorWindow.postMessage({
+            type: 'themeSettingsUpdated',
+            themeName,
+            css,
+            js
+        }, '*');
+    }
+});

@@ -185,6 +185,43 @@
 
     <div class="resize-overlay" id="resize-overlay"></div>
 
+    <!-- 添加主题设置对话框 -->
+    <dialog id="themeSettingsModal" class="modal">
+        <div class="modal-box">
+            <h3 class="font-bold text-lg mb-4">主题设置</h3>
+            <form id="themeSettingsForm">
+                <div class="form-control mb-4">
+                    <label class="label">
+                        <span class="label-text">第三方 CSS</span>
+                        <button type="button" class="btn btn-xs btn-ghost" onclick="addCssInput()">添加</button>
+                    </label>
+                    <div id="cssInputs">
+                        <!-- CSS 输入框将动态添加到这里 -->
+                    </div>
+                    <label class="label">
+                        <span class="label-text-alt text-warning">注意：此设置仅在预览时生效，不会修改主题文件</span>
+                    </label>
+                </div>
+                <div class="form-control mb-4">
+                    <label class="label">
+                        <span class="label-text">第三方 JavaScript</span>
+                        <button type="button" class="btn btn-xs btn-ghost" onclick="addJsInput()">添加</button>
+                    </label>
+                    <div id="jsInputs">
+                        <!-- JS 输入框将动态添加到这里 -->
+                    </div>
+                    <label class="label">
+                        <span class="label-text-alt text-warning">注意：此设置仅在预览时生效，不会修改主题文件</span>
+                    </label>
+                </div>
+                <div class="modal-action">
+                    <button type="button" class="btn btn-ghost" onclick="closeThemeSettings()">取消</button>
+                    <button type="submit" class="btn btn-primary">应用设置</button>
+                </div>
+            </form>
+        </div>
+    </dialog>
+
     <script src="https://cdn.bootcdn.net/ajax/libs/toastify-js/1.12.0/toastify.js"></script>
     <script>
         // 全局变量
@@ -218,7 +255,7 @@
 
         // 初始化编辑器
         function initEditor() {
-            require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.43.0/min/vs' }});
+            require.config({ paths: { 'vs': 'https://cdn.bootcdn.net/ajax/libs/monaco-editor/0.9.0/min/vs' }});
             require(['vs/editor/editor.main'], async function() {
                 editor = monaco.editor.create(document.getElementById('monaco-editor'), {
                     language: 'html',
@@ -246,7 +283,7 @@
             });
         }
 
-        // 修改更新预览函数
+        // 更新预览函数
         function updatePreview() {
             const content = editor.getValue();
             // 验证内容
@@ -257,6 +294,10 @@
             }
 
             const previewFrame = document.getElementById('preview-iframe');
+            // 获取当前主题的第三方资源设置
+            const css = JSON.parse(localStorage.getItem(`theme_${themeName}_css`) || '[]');
+            const js = JSON.parse(localStorage.getItem(`theme_${themeName}_js`) || '[]');
+            
             // 创建预览HTML，包装主题内容
             const previewHtml = `
                 <!DOCTYPE html>
@@ -264,21 +305,30 @@
                 <head>
                     <meta charset="UTF-8">
                     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    
+                    <!-- 注入第三方 CSS -->
+                    ${css.map(url => `<link href="${url}" rel="stylesheet">`).join('\n')}
                     <style>
-                        body {
-                            margin: 0;
+                        body { 
+                            margin: 0; 
                             padding: 16px;
-                            min-height: 100vh;
                             background-color: transparent;
+                        }
+                        .preview-wrapper {
+                            max-width: 800px;
+                            margin: 0 auto;
                         }
                     </style>
                 </head>
                 <body>
-                    ${content}
+                    <div class="preview-wrapper">
+                        ${content}
+                    </div>
+                    <!-- 注入第三方 JavaScript -->
+                    ${js.map(url => `<script src="${url}"><\/script>`).join('\n')}
                 </body>
                 </html>
             `;
+            
             previewFrame.srcdoc = previewHtml;
         }
 
@@ -430,8 +480,115 @@
             }
         }
 
+        // 添加主题设置按钮和对话框
+        const settingsButton = document.createElement('button');
+        settingsButton.className = 'btn btn-ghost ml-4';
+        settingsButton.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+            </svg>
+            <span class="ml-2">主题设置</span>
+        `;
+        settingsButton.onclick = () => showThemeSettings(themeName);
+
+        // 将按钮添加到顶部导航栏
+        document.querySelector('.navbar .flex-none').insertBefore(
+            settingsButton,
+            document.querySelector('.navbar .flex-none button')
+        );
+
+        // 添加主题设置相关函数
+        function showThemeSettings(themeName) {
+            currentThemeSettings = {
+                themeName: themeName,
+                css: JSON.parse(localStorage.getItem(`theme_${themeName}_css`) || '[]'),
+                js: JSON.parse(localStorage.getItem(`theme_${themeName}_js`) || '[]')
+            };
+            
+            // 清空并重新添加输入框
+            document.getElementById('cssInputs').innerHTML = '';
+            document.getElementById('jsInputs').innerHTML = '';
+            
+            currentThemeSettings.css.forEach(url => addCssInput(url));
+            currentThemeSettings.js.forEach(url => addJsInput(url));
+            
+            document.getElementById('themeSettingsModal').showModal();
+        }
+
+        // 添加CSS输入框
+        function addCssInput(value = '') {
+            const container = document.getElementById('cssInputs');
+            const inputGroup = document.createElement('div');
+            inputGroup.className = 'input-group mt-2';
+            inputGroup.innerHTML = `
+                <input type="text" class="input input-bordered flex-1" value="${value}" 
+                    placeholder="例如: https://cdn.tailwindcss.com">
+                <button type="button" class="btn btn-square btn-error" onclick="this.parentElement.remove()">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+            `;
+            container.appendChild(inputGroup);
+        }
+
+        // 添加JS输入框
+        function addJsInput(value = '') {
+            const container = document.getElementById('jsInputs');
+            const inputGroup = document.createElement('div');
+            inputGroup.className = 'input-group mt-2';
+            inputGroup.innerHTML = `
+                <input type="text" class="input input-bordered flex-1" value="${value}" 
+                    placeholder="例如: https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js">
+                <button type="button" class="btn btn-square btn-error" onclick="this.parentElement.remove()">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+            `;
+            container.appendChild(inputGroup);
+        }
+
+        function closeThemeSettings() {
+            document.getElementById('themeSettingsModal').close();
+        }
+
+        // 主题设置表单提交处理
+        document.getElementById('themeSettingsForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const cssUrls = Array.from(document.querySelectorAll('#cssInputs input'))
+                .map(input => input.value.trim())
+                .filter(url => url);
+            const jsUrls = Array.from(document.querySelectorAll('#jsInputs input'))
+                .map(input => input.value.trim())
+                .filter(url => url);
+            
+            // 保存设置到本地存储
+            localStorage.setItem(`theme_${themeName}_css`, JSON.stringify(cssUrls));
+            localStorage.setItem(`theme_${themeName}_js`, JSON.stringify(jsUrls));
+            
+            // 立即更新预览
+            updatePreview();
+            
+            closeThemeSettings();
+            showToast('设置已保存，预览已更新', 'success');
+        });
+
         // 页面加载完成后初始化
-        document.addEventListener('DOMContentLoaded', initEditor);
+        document.addEventListener('DOMContentLoaded', function() {
+            // 初始化编辑器
+            initEditor();
+
+            // 监听来自主题管理页面的设置更新事件
+            window.addEventListener('message', function(event) {
+                if (event.data.type === 'themeSettingsUpdated' && event.data.themeName === themeName) {
+                    localStorage.setItem(`theme_${themeName}_css`, JSON.stringify(event.data.css));
+                    localStorage.setItem(`theme_${themeName}_js`, JSON.stringify(event.data.js));
+                    updatePreview();
+                }
+            });
+        });
     </script>
 </body>
 </html> 
